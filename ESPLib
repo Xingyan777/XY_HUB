@@ -177,7 +177,7 @@ local function updateEsp()
                                             origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
                                         end
                                     else
-                                        origin = Vector2.new(camera.ViewportSize.X / 极, camera.ViewportSize.Y)
+                                        origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
                                     end
                                 else
                                     origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
@@ -187,7 +187,7 @@ local function updateEsp()
                             end
                           
                             esp.Tracer.From = origin
-                            esp.Tracer.To极 Vector2.new(position.X, position.Y)
+                            esp.Tracer.To = Vector2.new(position.X, position.Y)
                             esp.Tracer.Visible = true
                             
                             if espSettings.TeamColor and player.Team then
