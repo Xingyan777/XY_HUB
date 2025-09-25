@@ -60,6 +60,11 @@ local function isTeammate(player)
 end
 
 local function getClosestPlayerInFOV()
+    if not Camera then
+        Camera = Workspace.CurrentCamera
+        if not Camera then return nil end
+    end
+    
     local currentTime = tick()
     
     if currentTime - LastUpdateTime > BulletTrackingLib.CacheRefreshRate then
@@ -108,6 +113,11 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local args = {...}
 
     if method == "Raycast" and not checkcaller() and BulletTrackingLib.Enabled then
+        if not Camera then
+            Camera = Workspace.CurrentCamera
+            if not Camera then return oldNamecall(self, ...) end
+        end
+        
         local targetPlr = getClosestPlayerInFOV()
         if targetPlr and not isTeammate(targetPlr) then
             local targetPart = getTargetPart(targetPlr.Character)
@@ -133,6 +143,11 @@ local function setupRenderLoop()
     end
     
     RenderConnection = RunService.RenderStepped:Connect(function()
+        if not Camera then
+            Camera = Workspace.CurrentCamera
+            if not Camera then return end
+        end
+        
         UpdateInterval = UpdateInterval + 1
         
         if BulletTrackingLib.PerformanceMode and UpdateInterval % 2 ~= 0 then
