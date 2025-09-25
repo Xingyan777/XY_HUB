@@ -9,6 +9,11 @@ local UserInputService  = game:GetService("UserInputService")
 local LocalPlayer       = Players.LocalPlayer
 local Camera            = Workspace.CurrentCamera
 
+if not Camera then
+    wait(1)
+    Camera = Workspace.CurrentCamera
+end
+
 BulletTrackingLib.Enabled = false
 BulletTrackingLib.TeamCheck = true
 BulletTrackingLib.PerformanceMode = false
@@ -44,6 +49,17 @@ local CachedPlayers = {}
 local LastUpdateTime = 0
 local UpdateInterval = 0
 
+local function getCamera()
+    if not Camera or not Camera:IsA("Camera") then
+        Camera = Workspace.CurrentCamera
+        if not Camera then
+            wait(0.1)
+            Camera = Workspace.CurrentCamera
+        end
+    end
+    return Camera
+end
+
 local function getTargetPart(character)
     return character and character:FindFirstChild(BulletTrackingLib.TargetPart)
 end
@@ -59,11 +75,22 @@ local function isTeammate(player)
     return localTeam == targetTeam
 end
 
-local function getClosestPlayerInFOV()
-    if not Camera then
-        Camera = Workspace.CurrentCamera
-        if not Camera then return nil end
+local function safeWorldToViewportPoint(camera, position)
+    if not camera or not camera:IsA("Camera") then
+        return nil, false
     end
+    local success, result = pcall(function()
+        return camera:WorldToViewportPoint(position)
+    end)
+    if success then
+        return result, result.Z > 0
+    end
+    return nil, false
+end
+
+local function getClosestPlayerInFOV()
+    local camera = getCamera()
+    if not camera then return nil end
     
     local currentTime = tick()
     
@@ -75,7 +102,7 @@ local function getClosestPlayerInFOV()
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not myRoot then return nil end
 
-    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
     local closestPlayer, closestDistance
 
     for _, plr in ipairs(CachedPlayers) do
@@ -84,7 +111,7 @@ local function getClosestPlayerInFOV()
             local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
 
             if targetPart and humanoid and humanoid.Health > 0 then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                local screenPos, onScreen = safeWorldToViewportPoint(camera, targetPart.Position)
                 if onScreen then
                     local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
                     if dist <= BulletTrackingLib.FOV_Radius and (not closestDistance or dist < closestDistance) then
@@ -113,16 +140,14 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local args = {...}
 
     if method == "Raycast" and not checkcaller() and BulletTrackingLib.Enabled then
-        if not Camera then
-            Camera = Workspace.CurrentCamera
-            if not Camera then return oldNamecall(self, ...) end
-        end
+        local camera = getCamera()
+        if not camera then return oldNamecall(self, ...) end
         
         local targetPlr = getClosestPlayerInFOV()
         if targetPlr and not isTeammate(targetPlr) then
             local targetPart = getTargetPart(targetPlr.Character)
             if targetPart then
-                local origin = args[1] or Camera.CFrame.Position
+                local origin = args[1] or camera.CFrame.Position
                 return {
                     Instance = targetPart,
                     Position = targetPart.Position,
@@ -143,10 +168,8 @@ local function setupRenderLoop()
     end
     
     RenderConnection = RunService.RenderStepped:Connect(function()
-        if not Camera then
-            Camera = Workspace.CurrentCamera
-            if not Camera then return end
-        end
+        local camera = getCamera()
+        if not camera then return end
         
         UpdateInterval = UpdateInterval + 1
         
@@ -155,7 +178,7 @@ local function setupRenderLoop()
         end
         
         if FOV_Circle.Visible then
-            FOV_Circle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+            FOV_Circle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
             FOV_Circle.Radius = BulletTrackingLib.FOV_Radius
         end
 
@@ -164,7 +187,7 @@ local function setupRenderLoop()
         if targetPlr and not isTeammate(targetPlr) then
             local targetPart = getTargetPart(targetPlr.Character)
             if targetPart then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position + Vector3.new(0, 2.5, 0))
+                local screenPos, onScreen = safeWorldToViewportPoint(camera, targetPart.Position + Vector3.new(0, 2.5, 0))
                 if onScreen then
                     SemiCircle.Position = Vector2.new(screenPos.X, screenPos.Y)
                     SemiCircle.Visible = true
