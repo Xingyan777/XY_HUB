@@ -1,311 +1,323 @@
-if getgenv().ESPLibrary then
-    return getgenv().ESPLibrary
-end
+local ESPLib = {}
 
-local ESPLibrary = {}
+local espEnabled = false
+local espObjects = {}
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+local runService = game:GetService("RunService")
 
-local cloneref = cloneref or function(a) return a end
-local Players = cloneref(game:GetService("Players"))
-local CoreGui = cloneref(game:GetService("CoreGui"))
-local RunService = cloneref(game:GetService("RunService"))
-
-local LP = Players.LocalPlayer
-local Character = LP.Character
-local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
-local Camera = workspace.CurrentCamera
-
-local function GetDistance(position)
-    if RootPart then
-        return (RootPart.Position - position).Magnitude
-    elseif Camera then
-        return (Camera.CFrame.Position - position).Magnitude
-    end
-    return 9e9
-end
-
-local function FindPrimaryPart(instance)
-    return (instance:IsA("Model") and instance.PrimaryPart or nil)
-        or instance:FindFirstChildWhichIsA("BasePart")
-        or instance:FindFirstChildWhichIsA("UnionOperation")
-        or instance
-end
-
-local Library = {
-    ESP = {},
-    Tags = {},
-    Connections = {},
-    ESPFolder = Instance.new("Folder", CoreGui),
-    DefaultSettings = {
-        Name = "Unnamed",
-        Color = Color3.new(1, 1, 1),
-        TextSize = 15,
-        Tag = "DefaultTag",
-        ShowTextLabel = true,
-        ShowHighlight = true,
-        ShowDistance = true,
-        MaxDistance = math.huge,
-        ShowTracer = false,
-        TracerPosition = "Bottom",
-        TracerThickness = 1,
-        TracerTransparency = 1
-    }
+local espSettings = {
+    TeamCheck = false,
+    TeamColor = false,
+    Boxes = false,
+    Tracers = false,
+    Names = false,
+    Distance = false,
+    HealthBar = false,
+    MaxDistance = 1000,
+    BoxColor = Color3.fromRGB(255, 0, 0),
+    TextColor = Color3.fromRGB(255, 255, 255),
+    HealthColor = Color3.fromRGB(0, 255, 0),
+    TextSize = 14,
+    BoxThickness = 1,
+    HealthBarWidth = 2,
+    HealthBarHeight = 20,
+    TracerOrigin = "Top",
+    TracerColor = Color3.fromRGB(255, 255, 255)
 }
 
-Library.ESPFolder.Name = "ESPFolder"
-
-Library.GlobalSettings = setmetatable({}, {
-    __newindex = function(_, key, value)
-        Library.DefaultSettings[key] = value
-        for _, ESP in pairs(Library.ESP) do
-            ESP.Settings[key] = value
-        end
-    end
-})
-
-function ESPLibrary.Add(...)
-    local espSettings
-    if typeof(...) == "table" then
-        espSettings = ...
-    else
-        local object, name, color, size, tag = ...
-        espSettings = {
-            Object = object,
-            Name = name,
-            Color = color,
-            TextSize = size,
-            Tag = tag
-        }
-    end
+local function createEsp(player)
+    if espObjects[player] then return end
     
-    assert(espSettings.Object, "missing esp object")
-    
-    for i, v in pairs(Library.DefaultSettings) do
-        if espSettings[i] == nil then
-            espSettings[i] = v
-        end
-    end
-    
-    local ESP = {
-        Index = #Library.ESP + 1,
-        Settings = espSettings
+    local esp = {
+        Player = player,
+        Box = Drawing.new("Square"),
+        Tracer = Drawing.new("Line"),
+        NameLabel = Drawing.new("Text"),
+        DistanceLabel = Drawing.new("Text"),
+        HealthBarBackground = Drawing.new("Square"),
+        HealthBarForeground = Drawing.new("Square")
     }
     
-    ESP.Folder = Instance.new("Folder", Library.ESPFolder)
-    ESP.Folder.Name = ESP.Settings.Tag
+    esp.Box.Visible = false
+    esp.Box.Color = espSettings.BoxColor
+    esp.Box.Thickness = espSettings.BoxThickness
+    esp.Box.Filled = false
     
-    if Library.Tags[ESP.Settings.Tag] == nil then
-        Library.Tags[ESP.Settings.Tag] = true
+    esp.Tracer.Visible = false
+    esp.Tracer.Color = espSettings.TracerColor
+    esp.Tracer.Thickness = espSettings.BoxThickness
+    
+    esp.NameLabel.Visible = false
+    esp.NameLabel.Color = espSettings.TextColor
+    esp.NameLabel.Size = espSettings.TextSize
+    esp.NameLabel.Outline = true
+    esp.NameLabel.Text = player.Name
+    
+    esp.DistanceLabel.Visible = false
+    esp.DistanceLabel.Color = espSettings.TextColor
+    esp.DistanceLabel.Size = espSettings.TextSize
+    esp.DistanceLabel.Outline = true
+    esp.DistanceLabel.Center = true
+    
+    esp.HealthBarBackground.Visible = false
+    esp.HealthBarBackground.Color = Color3.fromRGB(50, 50, 50)
+    esp.HealthBarBackground.Filled = true
+    esp.HealthBarBackground.Thickness = 1
+    
+    esp.HealthBarForeground.Visible = false
+    esp.HealthBarForeground.Color = espSettings.HealthColor
+    esp.HealthBarForeground.Filled = true
+    esp.HealthBarForeground.Thickness = 1
+    
+    espObjects[player] = esp
+    
+    if player.Character then
+        esp.Character = player.Character
     end
     
-    local BillboardGui = Instance.new("BillboardGui", ESP.Folder)
-    BillboardGui.Name = ESP.Settings.Tag
-    BillboardGui.Enabled = false
-    BillboardGui.ResetOnSpawn = false
-    BillboardGui.AlwaysOnTop = true
-    BillboardGui.Size = UDim2.new(0, 200, 0, 50)
-    BillboardGui.Adornee = ESP.Settings.Object
-    BillboardGui.StudsOffset = Vector3.new(0, 0, 0)
-    ESP.BillboardGui = BillboardGui
-    
-    local TextLabel = Instance.new("TextLabel", BillboardGui)
-    TextLabel.Size = UDim2.new(1, 0, 1, 0)
-    TextLabel.Font = Enum.Font.SourceSans
-    TextLabel.TextWrapped = true
-    TextLabel.RichText = true
-    TextLabel.TextStrokeTransparency = 0.5
-    TextLabel.BackgroundTransparency = 1
-    TextLabel.Text = ESP.Settings.Name
-    TextLabel.TextColor3 = ESP.Settings.Color
-    TextLabel.TextSize = ESP.Settings.TextSize
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Parent = TextLabel
-    ESP.TextLabel = TextLabel
-    
-    local Highlight = Instance.new("Highlight", ESP.Folder)
-    Highlight.Adornee = nil
-    Highlight.FillColor = ESP.Settings.Color
-    Highlight.OutlineColor = ESP.Settings.Color
-    Highlight.FillTransparency = 0.65
-    Highlight.OutlineTransparency = 0
-    ESP.Highlight = Highlight
-    
-    local Tracer = Drawing.new("Line")
-    Tracer.Visible = false
-    Tracer.Color = ESP.Settings.Color
-    Tracer.Thickness = ESP.Settings.TracerThickness
-    Tracer.Transparency = ESP.Settings.TracerTransparency
-    ESP.Tracer = Tracer
-    
-    function ESP:Destroy()
-        if self.Folder then
-            self.Folder:Destroy()
-        end
-        if self.Tracer then
-            pcall(function()
-                self.Tracer:Remove()
-            end)
-        end
-        Library.ESP[self.Index] = nil
-    end
-    
-    function ESP:ToggleVisibility(Value)
-        if self.BillboardGui and self.Settings.ShowTextLabel then
-            self.BillboardGui.Enabled = Value
-        end
-        if self.Highlight and self.Settings.ShowHighlight then
-            self.Highlight.Adornee = Value and self.Settings.Object or nil
-        end
-        if self.Tracer and self.Settings.ShowTracer then
-            self.Tracer.Visible = Value
-        end
-    end
-    
-    ESP:ToggleVisibility(Library.Tags[ESP.Settings.Tag])
-    
-    Library.ESP[ESP.Index] = ESP
-    return ESP
-end
-
-function ESPLibrary.SetEnabled(tag, value)
-    Library.Tags[tag] = value
-end
-
-function ESPLibrary.ForEachTag(tag, callback)
-    for _, ESP in pairs(Library.ESP) do
-        if ESP.Settings.Tag == tag then
-            pcall(callback, ESP)
-        end
-    end
-end
-
-function ESPLibrary.Update(tag, newSettings)
-    ESPLibrary.ForEachTag(tag, function(ESP)
-        for i, v in pairs(newSettings) do
-            ESP.Settings[i] = v
-        end
+    player.CharacterAdded:Connect(function(character)
+        esp.Character = character
     end)
-end
-
-function ESPLibrary.Clear(tag)
-    ESPLibrary.ForEachTag(tag, function(ESP)
-        ESP:Destroy()
-    end)
-end
-
-function ESPLibrary.Destroy()
-    if Library.ESPFolder then
-        Library.ESPFolder:Destroy()
-    end
     
-    for _, connection in pairs(Library.Connections) do
-        pcall(function()
-            connection:Disconnect()
-        end)
-    end
+    return esp
+end
+
+local function updateEsp()
+    if not espEnabled then return end
     
-    for _, ESP in pairs(Library.ESP) do
-        pcall(function()
-            ESP:Destroy()
-        end)
-    end
+    local camera = workspace.CurrentCamera
+    if not camera then return end
     
-    table.clear(Library)
-    getgenv().ESPLibrary = nil
-end
-
-function ESPLibrary.GetAll()
-    return Library.ESP
-end
-
-function ESPLibrary.GetCount(tag)
-    local count = 0
-    for _, ESP in pairs(Library.ESP) do
-        if ESP.Settings.Tag == tag then
-            count = count + 1
-        end
-    end
-    return count
-end
-
-table.insert(Library.Connections, LP.CharacterAdded:Connect(function(newCharacter)
-    Character = newCharacter
-    RootPart = Character:WaitForChild("HumanoidRootPart")
-end))
-
-table.insert(Library.Connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    Camera = workspace.CurrentCamera
-end))
-
-table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
-    for _, ESP in pairs(Library.ESP) do
-        if not ESP.Settings.Object or not ESP.Settings.Object.Parent then
-            ESP:Destroy()
-            continue
-        end
-        
-        if not Library.Tags[ESP.Settings.Tag] then
-            ESP:ToggleVisibility(false)
-            continue
-        end
-        
-        if not ESP.Settings.ModelRoot then
-            ESP.Settings.ModelRoot = FindPrimaryPart(ESP.Settings.Object)
-        end
-        
-        local TargetPosition = ESP.Settings.ModelRoot:GetPivot().Position
-        local ScreenPosition, OnScreen = Camera:WorldToViewportPoint(TargetPosition)
-        
-        ESP:ToggleVisibility(OnScreen)
-        if not OnScreen then continue end
-        
-        local Distance = GetDistance(TargetPosition)
-        if Distance > ESP.Settings.MaxDistance then
-            ESP:ToggleVisibility(false)
-            continue
-        end
-        
-        if ESP.BillboardGui then
-            ESP.BillboardGui.Enabled = ESP.Settings.ShowTextLabel
-            if ESP.BillboardGui.Enabled then
-                ESP.TextLabel.TextColor3 = ESP.Settings.Color
-                ESP.TextLabel.TextSize = ESP.Settings.TextSize
-                if ESP.Settings.ShowDistance then
-                    ESP.TextLabel.Text = string.format("%s\n[%d]", ESP.Settings.Name, math.floor(Distance))
-                else
-                    ESP.TextLabel.Text = ESP.Settings.Name
-                end
-            end
-        end
-        
-        if ESP.Highlight then
-            ESP.Highlight.Adornee = ESP.Settings.ShowHighlight and ESP.Settings.Object or nil
-            if ESP.Highlight.Adornee then
-                ESP.Highlight.FillColor = ESP.Settings.Color
-                ESP.Highlight.OutlineColor = ESP.Settings.Color
-            end
-        end
-        
-        if ESP.Tracer then
-            ESP.Tracer.Visible = ESP.Settings.ShowTracer
-            if ESP.Tracer.Visible then
-                local TracerY = Camera.ViewportSize.Y
-                if ESP.Settings.TracerPosition == "Top" then
-                    TracerY = 0
-                elseif ESP.Settings.TracerPosition == "Center" then
-                    TracerY = Camera.ViewportSize.Y / 2
+    for player, esp in pairs(espObjects) do
+        if player ~= localPlayer and esp.Character and esp.Character.Parent ~= nil then
+            local humanoidRootPart = esp.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = esp.Character:FindFirstChild("Humanoid")
+            local head = esp.Character:FindFirstChild("Head")
+            
+            if humanoidRootPart and humanoid and head and humanoid.Health > 0 then
+                local position, onScreen = camera:WorldToViewportPoint(humanoidRootPart.Position)
+                local headPosition, headOnScreen = camera:WorldToViewportPoint(head.Position)
+                
+                local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local distance = 0
+                if localRoot then
+                    distance = (localRoot.Position - humanoidRootPart.Position).Magnitude
                 end
                 
-                ESP.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, TracerY)
-                ESP.Tracer.To = Vector2.new(ScreenPosition.X, ScreenPosition.Y)
-                ESP.Tracer.Color = ESP.Settings.Color
-                ESP.Tracer.Thickness = ESP.Settings.TracerThickness
-                ESP.Tracer.Transparency = ESP.Settings.TracerTransparency
+                if onScreen and headOnScreen and distance <= espSettings.MaxDistance then
+                    local shouldShow = true
+                    if espSettings.TeamCheck and player.Team and localPlayer.Team and player.Team == localPlayer.Team then
+                        shouldShow = false
+                    end
+                    
+                    if shouldShow then
+                        if espSettings.Boxes then
+                            local scale = 325 / position.Z
+                            local width, height = 3 * scale, 5 * scale
+                            
+                            esp.Box.Size = Vector2.new(width, height)
+                            esp.Box.Position = Vector2.new(position.X - width / 2, position.Y - height / 2)
+                            esp.Box.Visible = true
+                            
+                            if espSettings.TeamColor and player.Team then
+                                esp.Box.Color = player.Team.TeamColor.Color
+                            else
+                                esp.Box.Color = espSettings.BoxColor
+                            end
+                        else
+                            esp.Box.Visible = false
+                        end
+                        
+                        if espSettings.HealthBar then
+                            local scale = 325 / position.Z
+                            local boxWidth, boxHeight = 3 * scale, 5 * scale
+                            local healthPercent = humanoid.Health / humanoid.MaxHealth
+                            
+                            local bgX = position.X - boxWidth / 2 - espSettings.HealthBarWidth - 2
+                            local bgY = position.Y - boxHeight / 2
+                            esp.HealthBarBackground.Size = Vector2.new(espSettings.HealthBarWidth, boxHeight)
+                            esp.HealthBarBackground.Position = Vector2.new(bgX, bgY)
+                            esp.HealthBarBackground.Visible = true
+                            
+                            local healthHeight = boxHeight * healthPercent
+                            local fgX = bgX
+                            local fgY = bgY + (boxHeight - healthHeight)
+                            esp.HealthBarForeground.Size = Vector2.new(espSettings.HealthBarWidth, healthHeight)
+                            esp.HealthBarForeground.Position = Vector2.new(fgX, fgY)
+                            esp.HealthBarForeground.Visible = true
+                            
+                            if healthPercent > 0.7 then
+                                esp.HealthBarForeground.Color = Color3.fromRGB(0, 255, 0)
+                            elseif healthPercent > 0.3 then
+                                esp.HealthBarForeground.Color = Color3.fromRGB(255, 255, 0)
+                            else
+                                esp.HealthBarForeground.Color = Color3.fromRGB(255, 0, 0)
+                            end
+                        else
+                            esp.HealthBarBackground.Visible = false
+                            esp.HealthBarForeground.Visible = false
+                        end
+                        
+                        if espSettings.Tracers then
+                            local origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+                            if espSettings.TracerOrigin == "Top" then
+                                origin = Vector2.new(camera.ViewportSize.X / 2, 0)
+                            elseif espSettings.TracerOrigin == "Mouse" then
+                                local mouse = localPlayer:GetMouse()
+                                origin = Vector2.new(mouse.X, mouse.Y + 36)
+                            elseif espSettings.TracerOrigin == "Head" then
+                                if localPlayer.Character then
+                                    local head = localPlayer.Character:FindFirstChild("Head")
+                                    if head then
+                                        local headPos, headOnScreen = camera:WorldToViewportPoint(head.Position)
+                                        if headOnScreen then
+                                            origin = Vector2.new(headPos.X, headPos.Y)
+                                        else
+                                            origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+                                        end
+                                    else
+                                        origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+                                    end
+                                else
+                                    origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+                                end
+                            else
+                                origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+                            end
+                          
+                            esp.Tracer.From = origin
+                            esp.Tracer.To = Vector2.new(position.X, position.Y)
+                            esp.Tracer.Visible = true
+                            
+                            if espSettings.TeamColor and player.Team then
+                                esp.Tracer.Color = player.Team.TeamColor.Color
+                            else
+                                esp.Tracer.Color = espSettings.TracerColor
+                            end
+                        else
+                            esp.Tracer.Visible = false
+                        end
+                        
+                        if espSettings.Names then
+                            esp.NameLabel.Text = player.Name
+                            esp.NameLabel.Position = Vector2.new(headPosition.X - 25, headPosition.Y - 20)
+                            esp.NameLabel.Visible = true
+                            
+                            if espSettings.TeamColor and player.Team then
+                                esp.NameLabel.Color = player.Team.TeamColor.Color
+                            else
+                                esp.NameLabel.Color = espSettings.TextColor
+                            end
+                        else
+                            esp.NameLabel.Visible = false
+                        end
+                        
+                        if espSettings.Distance then
+                            esp.DistanceLabel.Text = string.format("[%d]", math.floor(distance))
+                            esp.DistanceLabel.Position = Vector2.new(position.X, position.Y + 30)
+                            esp.DistanceLabel.Visible = true
+                            
+                            if espSettings.TeamColor and player.Team then
+                                esp.DistanceLabel.Color = player.Team.TeamColor.Color
+                            else
+                                esp.DistanceLabel.Color = espSettings.TextColor
+                            end
+                        else
+                            esp.DistanceLabel.Visible = false
+                        end
+                    else
+                        esp.Box.Visible = false
+                        esp.Tracer.Visible = false
+                        esp.NameLabel.Visible = false
+                        esp.DistanceLabel.Visible = false
+                        esp.HealthBarBackground.Visible = false
+                        esp.HealthBarForeground.Visible = false
+                    end
+                else
+                    esp.Box.Visible = false
+                    esp.Tracer.Visible = false
+                    esp.NameLabel.Visible = false
+                    esp.DistanceLabel.Visible = false
+                    esp.HealthBarBackground.Visible = false
+                    esp.HealthBarForeground.Visible = false
+                end
+            else
+                esp.Box.Visible = false
+                esp.Tracer.Visible = false
+                esp.NameLabel.Visible = false
+                esp.DistanceLabel.Visible = false
+                esp.HealthBarBackground.Visible = false
+                esp.HealthBarForeground.Visible = false
             end
+        else
+            esp.Box.Visible = false
+            esp.Tracer.Visible = false
+            esp.NameLabel.Visible = false
+            esp.DistanceLabel.Visible = false
+            esp.HealthBarBackground.Visible = false
+            esp.HealthBarForeground.Visible = false
         end
     end
-end))
+end
 
-getgenv().ESPLibrary = ESPLibrary
+local function clearEsp()
+    for player, esp in pairs(espObjects) do
+        if esp.Box then esp.Box:Remove() end
+        if esp.Tracer then esp.Tracer:Remove() end
+        if esp.NameLabel then esp.NameLabel:Remove() end
+        if esp.DistanceLabel then esp.DistanceLabel:Remove() end
+        if esp.HealthBarBackground then esp.HealthBarBackground:Remove() end
+        if esp.HealthBarForeground then esp.HealthBarForeground:Remove() end
+    end
+    espObjects = {}
+end
 
-return ESPLibrary
+local function initEsp()
+    for _, player in pairs(players:GetPlayers()) do
+        if player ~= localPlayer then
+            createEsp(player)
+        end
+    end
+    
+    players.PlayerAdded:Connect(function(player)
+        createEsp(player)
+    end)
+    
+    players.PlayerRemoving:Connect(function(player)
+        if espObjects[player] then
+            if espObjects[player].Box then espObjects[player].Box:Remove() end
+            if espObjects[player].Tracer then espObjects[player].Tracer:Remove() end
+            if espObjects[player].NameLabel then espObjects[player].NameLabel:Remove() end
+            if espObjects[player].DistanceLabel then espObjects[player].DistanceLabel:Remove() end
+            if espObjects[player].HealthBarBackground then espObjects[player].HealthBarBackground:Remove() end
+            if espObjects[player].HealthBarForeground then espObjects[player].HealthBarForeground:Remove() end
+            espObjects[player] = nil
+        end
+    end)
+    
+    runService.RenderStepped:Connect(updateEsp)
+end
+
+function ESPLib.ToggleESP(enabled)
+    espEnabled = enabled
+    if not enabled then
+        clearEsp()
+    else
+        initEsp()
+    end
+end
+
+function ESPLib.UpdateSettings(newSettings)
+    for setting, value in pairs(newSettings) do
+        if espSettings[setting] ~= nil then
+            espSettings[setting] = value
+        end
+    end
+end
+
+function ESPLib.GetSettings()
+    return espSettings
+end
+
+return ESPLib
