@@ -1,0 +1,150 @@
+local AimBotLib = {}
+
+if _G.KS_A then return end
+_G.KS_A = true
+，
+local cloneref = cloneref or function(a) return a end
+local Players = cloneref(game:GetService("Players"))
+local RunService = cloneref(game:GetService("RunService"))
+
+local LP = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local Settings = {
+    Enabled = false,
+    TeamCheck = false,
+    WallCheck = false,
+    AliveCheck = true,
+    ShowFOV = false,
+    FOV = 120,
+    FOVColor = Color3.fromRGB(255, 0, 0),
+    FOVThickness = 2,
+    TargetPart = "Head",
+    MaxDistance = 500,
+    Smoothness = 0.2,
+    Prediction = false,
+    PredictionAmount = 0.1
+}
+
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = Settings.ShowFOV
+FOVCircle.Radius = Settings.FOV
+FOVCircle.Color = Settings.FOVColor
+FOVCircle.Thickness = Settings.FOVThickness
+FOVCircle.Position = workspace.CurrentCamera.ViewportSize / 2
+FOVCircle.Filled = false
+
+local function UpdateFOV()
+    FOVCircle.Visible = Settings.ShowFOV
+    FOVCircle.Radius = Settings.FOV
+    FOVCircle.Color = Settings.FOVColor
+    FOVCircle.Thickness = Settings.FOVThickness
+    FOVCircle.Position = workspace.CurrentCamera.ViewportSize / 2
+end
+
+local function AimBot()
+    if not Settings.Enabled then return end
+    
+    local closest = nil
+    local closestDistance = math.huge
+    local center = Camera.ViewportSize / 2
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LP then continue end
+        if Settings.AliveCheck and (not player.Character or not player.Character:FindFirstChild("Humanoid") or player.Character.Humanoid.Health <= 0) then continue end
+        if Settings.TeamCheck and player.Team == LP.Team then continue end
+        
+        local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
+        if not targetPart then continue end
+        
+        local distance = (targetPart.Position - Camera.CFrame.Position).Magnitude
+        if distance > Settings.MaxDistance then continue end
+        
+        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+        if not onScreen or screenPos.Z < 0 then continue end
+        
+        local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+        if screenDistance < closestDistance and screenDistance <= Settings.FOV then
+            closestDistance = screenDistance
+            closest = targetPart
+        end
+    end
+    
+    if closest then
+        local targetPosition = closest.Position
+        if Settings.Prediction then
+            targetPosition = targetPosition + (closest.Velocity * Settings.PredictionAmount)
+        end
+        
+        local currentCF = Camera.CFrame
+        local targetCF = CFrame.new(currentCF.Position, targetPosition)
+        Camera.CFrame = currentCF:Lerp(targetCF, Settings.Smoothness)
+    end
+end
+
+function AimBotLib.SetEnabled(value)
+    Settings.Enabled = value
+end
+
+function AimBotLib.SetTeamCheck(value)
+    Settings.TeamCheck = value
+end
+
+function AimBotLib.SetAliveCheck(value)
+    Settings.AliveCheck = value
+end
+
+function AimBotLib.SetShowFOV(value)
+    Settings.ShowFOV = value
+    UpdateFOV()
+end
+
+function AimBotLib.SetFOV(value)
+    Settings.FOV = value
+    UpdateFOV()
+end
+
+function AimBotLib.SetFOVColor(color)
+    Settings.FOVColor = color
+    UpdateFOV()
+end
+
+function AimBotLib.SetTargetPart(part)
+    Settings.TargetPart = part
+end
+
+function AimBotLib.SetMaxDistance(distance)
+    Settings.MaxDistance = distance
+end
+
+function AimBotLib.SetSmoothness(value)
+    Settings.Smoothness = value
+end
+
+function AimBotLib.SetPrediction(value)
+    Settings.Prediction = value
+end
+
+function AimBotLib.SetPredictionAmount(value)
+    Settings.PredictionAmount = value
+end
+
+function AimBotLib.GetSettings()
+    return Settings
+end
+
+function AimBotLib.UpdateSettings(newSettings)
+    for key, value in pairs(newSettings) do
+        if Settings[key] ~= nil then
+            Settings[key] = value
+        end
+    end
+    UpdateFOV()
+end
+
+RunService.RenderStepped:Connect(function()
+    UpdateFOV()
+    AimBot()
+end)
+
+return AimBotLib
